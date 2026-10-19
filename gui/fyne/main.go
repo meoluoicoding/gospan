@@ -1,16 +1,9 @@
-// Command gospan-gui is the Fyne desktop front end for Gospan.
-//
-// It lives in its own Go module (gui/fyne) so the core engine keeps its
-// CGO-free, pure-Go build. Fyne requires CGO and a C toolchain on Windows; see
-// docs/windows-integration.md and ADR-008.
-//
-// The window is also the on/off switch: keyboard capture and expansion only run
-// while the user has pressed "Bật viết tắt".
 package main
 
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -19,6 +12,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
@@ -38,22 +32,24 @@ type ui struct {
 	path string
 
 	statusLabel  *widget.Label
+	statusDot    *canvas.Circle
 	toggleBtn    *widget.Button
 	pathLabel    *widget.Label
 	countLabel   *widget.Label
+	configStatus *widget.Label
 	messageLabel *widget.Label
 	matchList    *widget.List
+	matches      []config.MatchConfig
 
-	configStatus *widget.Label
-	pollCancel   context.CancelFunc
+	trayMenu   *fyne.Menu
+	trayToggle *fyne.MenuItem
+	pollCancel context.CancelFunc
 
 	pathFromUser bool
 
-	// System tray, when the platform supports it.
-	trayMenu   *fyne.Menu
-	trayToggle *fyne.MenuItem
-
-	matches []config.MatchConfig
+	// Notification tracking to avoid spamming the OS notification area.
+	lastNotifiedCount int
+	lastNotifiedErr   error
 }
 
 func main() {
@@ -72,8 +68,23 @@ func main() {
 	u.setupTray()
 	u.load()
 
-	w.Resize(fyne.NewSize(760, 560))
+	w.Resize(fyne.NewSize(780, 600))
 	w.CenterOnScreen()
+
+	// Keyboard shortcuts.
+	w.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyF, Modifier: fyne.KeyModifierControl}, func(shortcut fyne.Shortcut) {
+		u.openSearch()
+	})
+	w.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyR, Modifier: fyne.KeyModifierControl}, func(shortcut fyne.Shortcut) {
+		u.reload(true)
+	})
+	w.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyB, Modifier: fyne.KeyModifierControl}, func(shortcut fyne.Shortcut) {
+		u.onToggle()
+	})
+	w.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyN, Modifier: fyne.KeyModifierControl}, func(shortcut fyne.Shortcut) {
+		u.onAddMatch()
+	})
+
 	w.ShowAndRun()
 
 	u.stopConfigPoller()
@@ -82,56 +93,36 @@ func main() {
 	}
 }
 
-// setupTray installs a system tray icon and menu. When the tray is available,
-// closing the window hides it instead of quitting so capture can keep running.
-func (u *ui) setupTray() {
-	desk, ok := u.fyneApp.(desktop.App)
-	if !ok {
-		return // platform without tray support: closing quits normally
-	}
-
-	show := fyne.NewMenuItem("Hiện cửa sổ", func() {
-		u.window.Show()
-		u.window.RequestFocus()
-	})
-	search := fyne.NewMenuItem("Tìm kiếm viết tắt", func() { u.openSearch() })
-
-	u.trayToggle = fyne.NewMenuItem("Bật viết tắt", u.onToggle)
-
-	quit := fyne.NewMenuItem("Thoát", nil)
-	quit.IsQuit = true
-
-	u.trayMenu = fyne.NewMenu("Gospan", show, search, u.trayToggle, fyne.NewMenuItemSeparator(), quit)
-	desk.SetSystemTrayMenu(u.trayMenu)
-	desk.SetSystemTrayIcon(appIcon())
-	desk.SetSystemTrayWindow(u.window)
-
-	u.window.SetCloseIntercept(func() {
-		u.window.Hide()
-	})
-}
-
 func (u *ui) build() {
+	// --- Status row ---
+	u.statusDot = canvas.NewCircle(theme.DisabledColor())
+	u.statusDot.Resize(fyne.NewSize(12, 12))
 	u.statusLabel = widget.NewLabel("○ Đã tắt")
 	u.statusLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	u.toggleBtn = widget.NewButtonWithIcon("Bật viết tắt", theme.MediaPlayIcon(), u.onToggle)
+	u.toggleBtn = widget.NewButtonWithIcon("Bật viết tắt (Ctrl+B)", theme.MediaPlayIcon(), u.onToggle)
 	u.toggleBtn.Importance = widget.HighImportance
 
+	statusRow := container.NewHBox(u.statusDot, u.statusLabel, u.toggleBtn)
+
+	// --- Config row ---
 	u.pathLabel = widget.NewLabel(u.path)
 	u.pathLabel.Wrapping = fyne.TextTruncate
 
 	u.countLabel = widget.NewLabel("")
-	u.messageLabel = widget.NewLabel("")
-	u.messageLabel.Wrapping = fyne.TextWrapWord
-
 	u.configStatus = widget.NewLabel("")
 
-	chooseBtn := widget.NewButtonWithIcon("Chọn cấu hình", theme.FolderOpenIcon(), u.onChoose)
+	chooseBtn := widget.NewButtonWithIcon("Chọn", theme.FolderOpenIcon(), u.onChoose)
 	searchBtn := widget.NewButtonWithIcon("Tìm kiếm", theme.SearchIcon(), u.openSearch)
-	starterBtn := widget.NewButtonWithIcon("Tạo cấu hình mẫu", theme.DocumentCreateIcon(), u.onCreateStarter)
+	starterBtn := widget.NewButtonWithIcon("Tạo mẫu", theme.DocumentCreateIcon(), u.onCreateStarter)
 	reloadBtn := widget.NewButtonWithIcon("Nạp lại", theme.ViewRefreshIcon(), u.onReload)
+	addBtn := widget.NewButtonWithIcon("Thêm", theme.ContentAddIcon(), u.onAddMatch)
 
+	configRow := container.NewHBox(widget.NewLabel("Cấu hình:"), u.pathLabel)
+	actionRow := container.NewHBox(chooseBtn, searchBtn, starterBtn, reloadBtn, addBtn, u.countLabel)
+	statusRow2 := container.NewHBox(widget.NewLabel("Trạng thái:"), u.configStatus)
+
+	// --- Match list ---
 	u.matchList = widget.NewList(
 		func() int { return len(u.matches) },
 		func() fyne.CanvasObject {
@@ -140,32 +131,47 @@ func (u *ui) build() {
 			return l
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
+			if i < 0 || i >= len(u.matches) {
+				return
+			}
 			o.(*widget.Label).SetText(matchLine(u.matches[i]))
 		},
 	)
 
-	header := container.NewVBox(
-		widget.NewLabelWithStyle("Gospan", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		widget.NewLabel("Bật cửa sổ này để kích hoạt gõ tắt toàn hệ thống."),
+	// Empty state
+	emptyLabel := widget.NewLabel("Chưa có trigger nào. Nhấn 'Thêm' hoặc 'Tạo mẫu'.")
+	emptyLabel.Alignment = fyne.TextAlignCenter
+
+	listContainer := container.NewStack(u.matchList)
+
+	// --- Footer / message ---
+	u.messageLabel = widget.NewLabel("")
+	u.messageLabel.Wrapping = fyne.TextWrapWord
+
+	footer := container.NewVBox(
 		widget.NewSeparator(),
-		container.NewHBox(u.toggleBtn, u.statusLabel),
-		container.NewHBox(widget.NewLabel("Cấu hình:"), u.pathLabel),
-		container.NewHBox(chooseBtn, searchBtn, starterBtn, reloadBtn, u.countLabel),
-		container.NewHBox(widget.NewLabel("Trạng thái config:"), u.configStatus),
+		container.NewHBox(widget.NewLabel("Mẹo:"), widget.NewLabel("Ctrl+F tìm kiếm · Ctrl+R nạp lại · Ctrl+B bật/tắt · Ctrl+N thêm trigger")),
+		u.messageLabel,
+	)
+
+	header := container.NewVBox(
+		container.NewHBox(
+			widget.NewLabelWithStyle("Gospan", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			widget.NewLabel("— trình gõ tắt"),
+		),
+		widget.NewSeparator(),
+		statusRow,
+		configRow,
+		actionRow,
+		statusRow2,
 		widget.NewSeparator(),
 		widget.NewLabelWithStyle("Danh sách viết tắt", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 	)
 
-	footer := container.NewVBox(
-		widget.NewSeparator(),
-		u.messageLabel,
-		widget.NewLabel("Thử gõ:  ;dc   ;kt   ;brse   ;date"),
-	)
-
-	u.window.SetContent(container.NewBorder(header, footer, nil, nil, u.matchList))
+	u.window.SetContent(container.NewBorder(header, footer, nil, nil, listContainer))
 }
 
-// onToggle starts or stops capture. The feature is only active while running.
+// onToggle starts or stops capture.
 func (u *ui) onToggle() {
 	if u.svc == nil {
 		u.setMessage("Chưa nạp được cấu hình. Hãy chọn một file cấu hình hợp lệ.")
@@ -198,14 +204,17 @@ func (u *ui) onToggle() {
 func (u *ui) setRunning(running bool) {
 	if running {
 		u.statusLabel.SetText("● Đang bật")
-		u.toggleBtn.SetText("Tắt viết tắt")
+		u.statusDot.FillColor = colorGreen()
+		u.toggleBtn.SetText("Tắt viết tắt (Ctrl+B)")
 		u.toggleBtn.SetIcon(theme.MediaPauseIcon())
+		u.window.SetTitle("Gospan — ● Đang bật")
 	} else {
 		u.statusLabel.SetText("○ Đã tắt")
-		u.toggleBtn.SetText("Bật viết tắt")
+		u.statusDot.FillColor = theme.DisabledColor()
+		u.toggleBtn.SetText("Bật viết tắt (Ctrl+B)")
 		u.toggleBtn.SetIcon(theme.MediaPlayIcon())
+		u.window.SetTitle("Gospan — ○ Đã tắt")
 	}
-
 	if u.trayToggle != nil {
 		if running {
 			u.trayToggle.Label = "Tắt viết tắt"
@@ -216,6 +225,7 @@ func (u *ui) setRunning(running bool) {
 			u.trayMenu.Refresh()
 		}
 	}
+	u.statusDot.Refresh()
 }
 
 func (u *ui) onChoose() {
@@ -236,12 +246,67 @@ func (u *ui) onChoose() {
 	d.Show()
 }
 
+func (u *ui) onCreateStarter() {
+	target := u.path
+	if err := config.WriteStarter(target); err != nil {
+		dialog.ShowError(err, u.window)
+		u.setMessage(err.Error())
+		return
+	}
+	u.pathFromUser = false
+	u.reload(false)
+	u.setMessage("Đã tạo cấu hình mẫu tại " + target + ". Nhấn Bật để bắt đầu gõ tắt.")
+}
+
+func (u *ui) onAddMatch() {
+	if u.svc == nil {
+		u.setMessage("Chưa nạp được cấu hình.")
+		return
+	}
+
+	triggerEntry := widget.NewEntry()
+	triggerEntry.SetPlaceHolder(";kt")
+	replaceEntry := widget.NewMultiLineEntry()
+	replaceEntry.SetPlaceHolder("kiểm tra")
+	descEntry := widget.NewEntry()
+	descEntry.SetPlaceHolder("mô tả (tùy chọn)")
+
+	form := container.NewVBox(
+		widget.NewLabel("Trigger:"),
+		triggerEntry,
+		widget.NewLabel("Replacement:"),
+		replaceEntry,
+		widget.NewLabel("Description:"),
+		descEntry,
+	)
+
+	d := dialog.NewCustomConfirm("Thêm trigger", "Thêm", "Hủy", form, func(ok bool) {
+		if !ok {
+			return
+		}
+		trig := strings.TrimSpace(triggerEntry.Text)
+		repl := replaceEntry.Text
+		if trig == "" || repl == "" {
+			dialog.ShowError(fmt.Errorf("trigger và replacement không được rỗng"), u.window)
+			return
+		}
+		editor := config.NewEditor(u.svc.Config().App.ConfigPath, u.svc.Config().App.ConfigPath)
+		if err := editor.AddMatch(trig, repl, strings.TrimSpace(descEntry.Text)); err != nil {
+			dialog.ShowError(err, u.window)
+			u.setMessage("Thêm thất bại: " + err.Error())
+			return
+		}
+		u.reload(false)
+		u.setMessage(fmt.Sprintf("Đã thêm %s → %s", trig, firstLine(repl)))
+	}, u.window)
+	d.Resize(fyne.NewSize(400, 320))
+	d.Show()
+}
+
 func (u *ui) onReload() {
 	u.reload(true)
 }
 
-// reload rebuilds the service from the current path, preserving the running
-// state when possible.
 func (u *ui) reload(restart bool) {
 	wasRunning := u.svc != nil && u.svc.Running()
 	if u.svc != nil {
@@ -259,8 +324,6 @@ func (u *ui) reload(restart bool) {
 	}
 }
 
-// load opens the service from u.path and refreshes the UI. On a first run with
-// the default path, a starter configuration is created automatically.
 func (u *ui) load() {
 	svc, err := gospanapp.Open(u.path, newLogger())
 	created := false
@@ -286,7 +349,41 @@ func (u *ui) load() {
 	}
 }
 
-// startConfigPoller surfaces background reload results in the UI.
+func (u *ui) applyService(svc *gospanapp.Service) {
+	u.svc = svc
+	u.matches = svc.Config().Matches
+	u.matchList.Refresh()
+	u.pathLabel.SetText(svc.Config().App.ConfigPath)
+	u.countLabel.SetText(fmt.Sprintf("%d trigger", svc.TriggerCount()))
+	if svc.ConfigLoaded() {
+		u.toggleBtn.Enable()
+		u.configStatus.SetText(fmt.Sprintf("✓ Đã nạp (%d trigger)", svc.TriggerCount()))
+	} else {
+		u.toggleBtn.Disable()
+		u.configStatus.SetText("✗ Chưa nạp config")
+	}
+	u.setRunning(svc.Running())
+	u.startConfigPoller()
+	u.notifyConfigLoaded(svc.TriggerCount())
+}
+
+func (u *ui) showLoadError(err error) {
+	u.svc = nil
+	u.matches = nil
+	u.matchList.Refresh()
+	u.pathLabel.SetText(u.path)
+	u.countLabel.SetText("")
+	u.toggleBtn.Disable()
+	u.setRunning(false)
+	u.configStatus.SetText("✗ Chưa nạp config")
+
+	if config.IsNotExist(err) {
+		u.setMessage("Không tìm thấy file cấu hình: " + u.path + " — nhấn 'Tạo cấu hình mẫu'.")
+		return
+	}
+	u.setMessage("Cấu hình không hợp lệ: " + err.Error())
+}
+
 func (u *ui) startConfigPoller() {
 	if u.pollCancel != nil {
 		u.pollCancel()
@@ -310,6 +407,10 @@ func (u *ui) startConfigPoller() {
 				fyne.Do(func() {
 					if err != nil {
 						u.configStatus.SetText("⚠ Reload lỗi: " + err.Error())
+						if err != u.lastNotifiedErr {
+							u.lastNotifiedErr = err
+							u.notify("Gospan — Lỗi cấu hình", err.Error())
+						}
 						return
 					}
 					if loaded {
@@ -317,13 +418,35 @@ func (u *ui) startConfigPoller() {
 					} else {
 						u.configStatus.SetText("✗ Chưa nạp config")
 					}
+					if count != u.lastNotifiedCount || u.lastNotifiedErr != nil {
+						u.lastNotifiedCount = count
+						u.lastNotifiedErr = nil
+						u.notify("Gospan", fmt.Sprintf("Đã nạp cấu hình — %d trigger.", count))
+					}
 				})
 			}
 		}
 	}()
 }
 
-// stopConfigPoller stops the background poller.
+// notify sends an OS-level notification.
+func (u *ui) notify(title, body string) {
+	if u.fyneApp == nil {
+		return
+	}
+	u.fyneApp.SendNotification(&fyne.Notification{
+		Title:   title,
+		Content: body,
+	})
+}
+
+// notifyConfigLoaded fires a notification for the initial load.
+func (u *ui) notifyConfigLoaded(count int) {
+	u.lastNotifiedCount = count
+	u.lastNotifiedErr = nil
+	u.notify("Gospan", fmt.Sprintf("Đã nạp cấu hình — %d trigger.", count))
+}
+
 func (u *ui) stopConfigPoller() {
 	if u.pollCancel != nil {
 		u.pollCancel()
@@ -331,61 +454,35 @@ func (u *ui) stopConfigPoller() {
 	}
 }
 
-// applyService installs a loaded service into the UI.
-func (u *ui) applyService(svc *gospanapp.Service) {
-	u.svc = svc
-	u.matches = svc.Config().Matches
-	u.matchList.Refresh()
-	u.pathLabel.SetText(svc.Config().App.ConfigPath)
-	u.countLabel.SetText(fmt.Sprintf("%d trigger", svc.TriggerCount()))
-	if svc.ConfigLoaded() {
-		u.toggleBtn.Enable()
-		u.configStatus.SetText(fmt.Sprintf("✓ Đã nạp (%d trigger)", svc.TriggerCount()))
-	} else {
-		u.toggleBtn.Disable()
-		u.configStatus.SetText("✗ Chưa nạp config")
-	}
-	u.setRunning(svc.Running())
-	u.startConfigPoller()
-}
-
-// showLoadError clears the trigger view and explains the failure.
-func (u *ui) showLoadError(err error) {
-	u.svc = nil
-	u.matches = nil
-	u.matchList.Refresh()
-	u.pathLabel.SetText(u.path)
-	u.countLabel.SetText("")
-	u.toggleBtn.Disable()
-	u.setRunning(false)
-	u.configStatus.SetText("✗ Chưa nạp config")
-
-	if config.IsNotExist(err) {
-		u.setMessage("Không tìm thấy file cấu hình: " + u.path + " — nhấn 'Tạo cấu hình mẫu'.")
-		return
-	}
-	u.setMessage("Cấu hình không hợp lệ: " + err.Error())
-}
-
-// onCreateStarter writes a starter configuration to the current path.
-func (u *ui) onCreateStarter() {
-	target := u.path
-	if err := config.WriteStarter(target); err != nil {
-		dialog.ShowError(err, u.window)
-		u.setMessage(err.Error())
-		return
-	}
-	u.pathFromUser = false
-	u.reload(false)
-	u.setMessage("Đã tạo cấu hình mẫu tại " + target + ". Nhấn Bật để bắt đầu gõ tắt.")
-}
-
 func (u *ui) setMessage(s string) {
 	u.messageLabel.SetText(s)
 }
 
-// newLogger writes structured logs to the user log directory, falling back to
-// stderr. Typed content is never logged.
+func (u *ui) setupTray() {
+	desk, ok := u.fyneApp.(desktop.App)
+	if !ok {
+		return
+	}
+
+	show := fyne.NewMenuItem("Hiện cửa sổ", func() {
+		u.window.Show()
+		u.window.RequestFocus()
+	})
+	search := fyne.NewMenuItem("Tìm kiếm viết tắt", func() { u.openSearch() })
+	u.trayToggle = fyne.NewMenuItem("Bật viết tắt", u.onToggle)
+	quit := fyne.NewMenuItem("Thoát", nil)
+	quit.IsQuit = true
+
+	u.trayMenu = fyne.NewMenu("Gospan", show, search, u.trayToggle, fyne.NewMenuItemSeparator(), quit)
+	desk.SetSystemTrayMenu(u.trayMenu)
+	desk.SetSystemTrayIcon(appIcon())
+	desk.SetSystemTrayWindow(u.window)
+
+	u.window.SetCloseIntercept(func() {
+		u.window.Hide()
+	})
+}
+
 func newLogger() *slog.Logger {
 	dir := filepath.Join(config.DefaultDir(), "logs")
 	if err := os.MkdirAll(dir, 0o755); err == nil {
@@ -410,4 +507,8 @@ func firstLine(s string) string {
 		return s[:i] + "…"
 	}
 	return s
+}
+
+func colorGreen() color.Color {
+	return color.RGBA{R: 34, G: 197, B: 94, A: 255}
 }

@@ -138,6 +138,13 @@ The GUI lives in its own Go module (`gui/fyne`) because Fyne requires CGO and a
 C toolchain (`gcc`); the core engine stays pure-Go and builds with
 `CGO_ENABLED=0`. See [`docs/gui.md`](docs/gui.md).
 
+## Cross-platform
+
+The core engine, config, CLI, and storage build on **Windows, macOS, and
+Linux** with `CGO_ENABLED=0`. Keyboard capture and text insertion are currently
+**Windows-only**; macOS/Linux ship best-effort clipboard and process helpers.
+See [`docs/cross-platform.md`](docs/cross-platform.md).
+
 ## Development
 
 ```powershell

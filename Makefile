@@ -30,6 +30,12 @@ bench:
 build:
 	go build -o $(DIST)/$(BINARY).exe $(PKG)
 
+build-linux:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o $(DIST)/$(BINARY)-linux ./cmd/gospan
+
+build-macos:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -o $(DIST)/$(BINARY)-macos ./cmd/gospan
+
 gui:
 	cd gui/fyne && go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../../$(DIST)/$(BINARY)-gui.exe .
 
