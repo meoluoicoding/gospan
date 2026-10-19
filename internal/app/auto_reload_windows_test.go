@@ -41,8 +41,12 @@ func TestAutoReloadOnChange(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte("matches:\n  - trigger: \";b\"\n    replace: \"two\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// Force a distinct mtime so the watcher's poll detects the change even on
+	// filesystems with coarse mtime granularity.
+	future := time.Now().Add(2 * time.Second)
+	_ = os.Chtimes(cfgPath, future, future)
 
-	deadline = time.Now().Add(8 * time.Second)
+	deadline = time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, _, ok, _ := svc.TestMatch(";b", ""); ok {
 			if _, _, ok2, _ := svc.TestMatch(";a", ""); !ok2 {

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/snzpet/gospan/internal/app"
 	"github.com/snzpet/gospan/internal/config"
@@ -22,6 +23,7 @@ import (
 	"github.com/snzpet/gospan/internal/platform"
 	"github.com/snzpet/gospan/internal/platform/host"
 	"github.com/snzpet/gospan/internal/storage"
+	"github.com/snzpet/gospan/internal/update"
 	"github.com/snzpet/gospan/internal/vocabulary"
 )
 
@@ -59,6 +61,8 @@ func (a *app2) run(args []string) int {
 	case "version", "-v", "--version":
 		fmt.Fprintln(a.stdout, a.version)
 		return ExitOK
+	case "update":
+		return a.updateCmd(args[1:])
 	case "config":
 		return a.configCmd(args[1:])
 	case "match":
@@ -99,6 +103,8 @@ Commands:
   config init               Create a starter configuration
   config reload             Reload a running instance (not implemented)
 
+  update check              Check for a newer release on GitHub
+
   match list                List configured triggers
   match test <input>        Test whether input ends with a trigger
   match add <trigger> <replacement>   Add a rule to the YAML configuration
@@ -107,6 +113,8 @@ Commands:
   vocab list                List vocabulary entries
   vocab add <trigger> <replacement>
   vocab export <file>       Export vocabulary as tab-separated text
+
+  update check              Check for a newer release on GitHub
 
   version                   Print the version
   help                      Show this help
@@ -824,6 +832,53 @@ func errString(err error) string {
 	}
 	return err.Error()
 }
+func (a *app2) updateCmd(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.stderr, "update: expected a subcommand (check)")
+		return ExitUsage
+	}
+	switch args[0] {
+	case "check":
+		return a.updateCheck(args[1:])
+	default:
+		fmt.Fprintf(a.stderr, "update: unknown subcommand %q\n", args[0])
+		return ExitUsage
+	}
+}
+
+func (a *app2) updateCheck(args []string) int {
+	c := a.common("update check")
+	if code, ok := c.parse(args); !ok {
+		return code
+	}
+
+	const repo = "meoluoicoding/gospan"
+	rel, err := update.CheckLatest(repo, 10*time.Second)
+	if err != nil {
+		fmt.Fprintf(a.stderr, "update check failed: %v\n", err)
+		return ExitError
+	}
+
+	if c.json {
+		a.writeJSON(map[string]any{
+			"current": a.version,
+			"latest":  rel.TagName,
+			"newer":   update.IsNewer(a.version, rel.TagName),
+			"url":     rel.HTMLURL,
+		})
+		return ExitOK
+	}
+
+	fmt.Fprintf(a.stdout, "current version: %s\n", a.version)
+	fmt.Fprintf(a.stdout, "latest release:  %s\n", rel.TagName)
+	if update.IsNewer(a.version, rel.TagName) {
+		fmt.Fprintf(a.stdout, "A newer version is available: %s\n", rel.HTMLURL)
+	} else {
+		fmt.Fprintln(a.stdout, "You are up to date.")
+	}
+	return ExitOK
+}
+
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		return s[:i] + "…"
