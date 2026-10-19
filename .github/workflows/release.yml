@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-core:
+    name: Core (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            ext: .exe
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: ''
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            ext: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: Build
+        shell: bash
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w" -o "dist/gospan${{ matrix.ext }}" ./cmd/gospan
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gospan-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/gospan${{ matrix.ext }}
+
+  build-gui:
+    name: GUI (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: Setup MinGW
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc
+      - name: Download GUI module deps
+        working-directory: gui/fyne
+        run: go mod download
+      - name: Build GUI
+        working-directory: gui/fyne
+        env:
+          CGO_ENABLED: "1"
+        run: go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../../dist/gospan-gui.exe .
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gospan-gui-windows-amd64
+          path: dist/gospan-gui.exe
+
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    needs: [build-core, build-gui]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS.txt
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+          generate_release_notes: true

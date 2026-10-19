@@ -1,0 +1,12 @@
+# English shorthand dictionary.
+matches:
+  - trigger: ";brse"
+    replace: "Bridge Software Engineer"
+  - trigger: ";brb"
+    replace: "Be right back"
+  - trigger: ";ty"
+    replace: "Thank you"
+  - trigger: ";asap"
+    replace: "as soon as possible"
+  - trigger: ";fyi"
+    replace: "for your information"

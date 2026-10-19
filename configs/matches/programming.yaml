@@ -1,0 +1,24 @@
+# Programming snippets dictionary.
+matches:
+  - trigger: ";log"
+    replace: "console.log()"
+
+  - trigger: "^;d(\\d+)$"
+    trigger_type: regex
+    replace: "Section $1"
+
+  - trigger: "^;h(\\d)$"
+    trigger_type: regex
+    replace: "Heading level $1"
+  - trigger: ";func"
+    replace: |
+      func $1() {
+      	$0
+      }
+  - trigger: ";iferr"
+    replace: |
+      if err != nil {
+      	return err
+      }
+  - trigger: ";gofmt"
+    replace: "gofmt -s -w ."

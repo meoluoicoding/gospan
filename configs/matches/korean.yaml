@@ -1,0 +1,29 @@
+# Korean shorthand dictionary.
+matches:
+  - trigger: ";kr"
+    replace: "안녕하세요"
+    description: Hello
+
+  - trigger: ";annyeong"
+    replace: "안녕하세요, 반갑습니다"
+    description: Hello, nice to meet you
+
+  - trigger: ";gamsa"
+    replace: "감사합니다"
+    description: Thank you
+
+  - trigger: ";mian"
+    replace: "죄송합니다"
+    description: I'm sorry
+
+  - trigger: ";annyeonghi"
+    replace: "안녕히 가세요"
+    description: Goodbye (to someone leaving)
+
+  - trigger: ";datekr"
+    replace: "{{date:2006년 01월 02일}}"
+
+  - trigger: ";sigkr"
+    replace: |
+      감사합니다.
+      Khoa

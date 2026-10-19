@@ -1,0 +1,30 @@
+# Chinese shorthand dictionary.
+matches:
+  - trigger: ";cn"
+    replace: "你好"
+    description: Hello
+
+  - trigger: ";nihao"
+    replace: "你好，世界"
+    description: Hello, world
+
+  - trigger: ";xie"
+    replace: "谢谢"
+    description: Thank you
+
+  - trigger: ";duibuqi"
+    replace: "对不起"
+    description: Sorry
+
+  - trigger: ";zaijian"
+    replace: "再见"
+    description: Goodbye
+
+  - trigger: ";datecn"
+    replace: "{{date:2006年01月02日}}"
+
+  - trigger: ";sigcn"
+    replace: |
+      此致
+      敬礼
+      Khoa

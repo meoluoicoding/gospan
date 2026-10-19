@@ -1,0 +1,33 @@
+# German shorthand dictionary.
+matches:
+  - trigger: ";de"
+    replace: "Grüße"
+    description: Greetings
+
+  - trigger: ";gruss"
+    replace: "Guten Tag, wie geht's?"
+    description: Good day, how are you?
+
+  - trigger: ";danke"
+    replace: "Vielen Dank"
+    description: Thank you very much
+
+  - trigger: ";bitte"
+    replace: "Bitte sehr"
+    description: You're welcome
+
+  - trigger: ";entschuldigung"
+    replace: "Entschuldigung"
+    description: Excuse me / sorry
+
+  - trigger: ";aufwiedersehen"
+    replace: "Auf Wiedersehen"
+    description: Goodbye
+
+  - trigger: ";datede"
+    replace: "{{date:02.01.2006}}"
+
+  - trigger: ";sigde"
+    replace: |
+      Mit freundlichen Grüßen
+      Khoa

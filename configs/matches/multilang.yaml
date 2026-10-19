@@ -1,0 +1,38 @@
+# Multi-language shorthand dictionary.
+# Combines Vietnamese, Japanese, Chinese, Korean, German, and English entries.
+matches:
+  - trigger: ";dc"
+    replace: "được"
+  - trigger: ";k"
+    replace: "không"
+
+  - trigger: ";jp"
+    replace: "こんにちは"
+  - trigger: ";arigato"
+    replace: "ありがとうございます"
+
+  - trigger: ";cn"
+    replace: "你好"
+  - trigger: ";xie"
+    replace: "谢谢"
+
+  - trigger: ";kr"
+    replace: "안녕하세요"
+  - trigger: ";gamsa"
+    replace: "감사합니다"
+
+  - trigger: ";de"
+    replace: "Grüße"
+  - trigger: ";danke"
+    replace: "Vielen Dank"
+
+  - trigger: ";brse"
+    replace: "Bridge Software Engineer"
+  - trigger: ";ty"
+    replace: "Thank you"
+
+  - trigger: ";emoji"
+    replace: "🎉 done ✅"
+
+  - trigger: ";date"
+    replace: "{{date:2006-01-02}}"

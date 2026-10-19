@@ -1,0 +1,18 @@
+# Vietnamese shorthand dictionary.
+matches:
+  - trigger: ";dc"
+    replace: "được"
+  - trigger: ";k"
+    replace: "không"
+  - trigger: ";kt"
+    replace: "kiểm tra"
+  - trigger: ";ng"
+    replace: "người"
+  - trigger: ";tg"
+    replace: "thời gian"
+  - trigger: ";cv"
+    replace: "công việc"
+  - trigger: ";sp"
+    replace: "sản phẩm"
+  - trigger: ";ct"
+    replace: "chương trình"

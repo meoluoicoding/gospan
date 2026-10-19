@@ -1,0 +1,40 @@
+# Gospan multi-language example configuration.
+# Combines every dictionary shipped under configs/matches/.
+
+app:
+  name: gospan
+  log_level: info
+
+engine:
+  case_sensitive: false
+  word_boundary: true
+  escape_char: "\\"
+  max_trigger_length: 64
+  max_expansion_length: 16384
+
+input:
+  ignore_injected_events: true
+  buffer_size: 256
+
+storage:
+  backend: jsonl
+  path: data/vocabulary.jsonl
+
+include:
+  - matches/vietnamese.yaml
+  - matches/japanese.yaml
+  - matches/chinese.yaml
+  - matches/korean.yaml
+  - matches/german.yaml
+  - matches/english.yaml
+  - matches/programming.yaml
+
+matches:
+  - trigger: ";sig"
+    replace: |
+      Trân trọng,
+      Khoa
+  - trigger: ";date"
+    replace: "{{date:2006-01-02}}"
+  - trigger: ";emoji"
+    replace: "🎉 done ✅"

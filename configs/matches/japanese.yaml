@@ -1,0 +1,29 @@
+# Japanese shorthand dictionary.
+matches:
+  - trigger: ";jp"
+    replace: "こんにちは"
+    description: Hello
+
+  - trigger: ";arigato"
+    replace: "ありがとうございます"
+    description: Thank you (polite)
+
+  - trigger: ";ohayo"
+    replace: "おはようございます"
+    description: Good morning
+
+  - trigger: ";sumimasen"
+    replace: "すみません"
+    description: Excuse me / sorry
+
+  - trigger: ";arigatou"
+    replace: "ありがとうございました"
+    description: Thank you very much (past tense)
+
+  - trigger: ";datejp"
+    replace: "{{date:2006年01月02日}}"
+
+  - trigger: ";sigjp"
+    replace: |
+      よろしくお願いいたします。
+      Khoa

@@ -1,0 +1,54 @@
+# Gospan example configuration.
+# Copy this file to %APPDATA%\gospan\config.yaml and edit it.
+
+app:
+  name: gospan
+  log_level: info          # debug | info | warn | error
+  start_with_windows: false
+
+engine:
+  enabled: true
+  case_sensitive: false
+  word_boundary: true
+  escape_char: "\\"        # type the escape before a trigger to expand literally
+  max_trigger_length: 64
+  max_expansion_length: 16384
+
+input:
+  minimum_interval_ms: 0
+  ignore_injected_events: true
+  buffer_size: 256
+  excluded_processes:
+    - keepass.exe
+    - 1password.exe
+
+suggestions:
+  enabled: true
+  learn_from_typing: false  # learning is opt-in; must be enabled explicitly
+  minimum_occurrences: 5
+  minimum_phrase_length: 2
+  maximum_candidates: 5
+
+storage:
+  backend: jsonl            # jsonl | sqlite
+  path: data/vocabulary.jsonl
+
+# Additional dictionaries, merged into this configuration.
+include:
+  - matches/vietnamese.yaml
+  - matches/english.yaml
+  - matches/programming.yaml
+
+# Inline rules. Duplicate triggers are rejected at load time.
+matches:
+  - trigger: ";sig"
+    description: Email signature
+    replace: |
+      Trân trọng,
+      Khoa
+
+  - trigger: ";date"
+    replace: "{{date:2006-01-02}}"
+
+  - trigger: ";now"
+    replace: "{{datetime:2006-01-02 15:04:05}}"
