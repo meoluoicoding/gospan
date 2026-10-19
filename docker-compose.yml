@@ -1,0 +1,22 @@
+# Local development / testing with Docker.
+# Usage:
+#   docker compose build
+#   docker compose run --rm gospan version
+#   docker compose run --rm gospan config validate --config /app/configs/config.example.yaml
+
+services:
+  gospan:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gospan:dev
+    volumes:
+      - ./configs:/app/configs:ro
+      - gospan-data:/app/data
+    environment:
+      GOSPAN_CONFIG: /app/configs/config.example.yaml
+    # The core CLI has no long-running daemon by default; override command as needed.
+    command: ["version"]
+
+volumes:
+  gospan-data:

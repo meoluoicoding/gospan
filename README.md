@@ -138,6 +138,25 @@ The GUI lives in its own Go module (`gui/fyne`) because Fyne requires CGO and a
 C toolchain (`gcc`); the core engine stays pure-Go and builds with
 `CGO_ENABLED=0`. See [`docs/gui.md`](docs/gui.md).
 
+## Docker
+
+A minimal container image for the core CLI:
+
+```bash
+docker build -t gospan:dev .
+docker run --rm gospan:dev version
+docker run --rm -v "$PWD/configs:/app/configs:ro" gospan:dev config validate --config /app/configs/config.example.yaml
+```
+
+Or with compose:
+
+```bash
+docker compose build
+docker compose run --rm gospan version
+```
+
+The GUI is not containerized (it needs a display and CGO). See [`docs/gui.md`](docs/gui.md).
+
 ## Cross-platform
 
 The core engine, config, CLI, and storage build on **Windows, macOS, and

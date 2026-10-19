@@ -39,6 +39,9 @@ build-macos:
 gui:
 	cd gui/fyne && go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../../$(DIST)/$(BINARY)-gui.exe .
 
+docker:
+	docker build -t gospan:dev .
+
 release:
 	set CGO_ENABLED=0&& set GOOS=windows&& set GOARCH=amd64&& go build -trimpath -ldflags "$(LDFLAGS)" -o $(DIST)/$(BINARY).exe $(PKG)
 
